@@ -35,6 +35,7 @@ export function apply(ctx: any): void {
     ctx.effect(() => ctx.connection.fetch.register({
       path: '/api/deep-toolbox/stats',
       methods: ['GET'],
+      requestBody: 'buffered', // required by dsh's route registry; GET has no body anyway
       fetch: async (request: Request): Promise<Response> => {
         try {
           return json({ ok: true, ...collect(clampDays(new URL(request.url, 'http://x').searchParams.get('days') ?? 30)) })

@@ -1,15 +1,12 @@
-// deep-toolbox — browser half: a "Toolbox" row in the left sidebar that opens
-// a full page: which tools agents call, how often they fail, and what each
+// deep-toolbox — browser half: a "Toolbox" tab on dsh's Plugins page (next to
+// Installed / Discover): which tools agents call, how often they fail, and what each
 // one's definition costs in every request. Styling uses the host's own
 // tokens (--dsw-*), so light and dark themes just work.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { en, zh } from './locales'
 
@@ -19,8 +16,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-export const PANEL_ID = 'deep-toolbox' as MainPanelId
-export const inject = ['slots', 'locale', 'layout']
+export const TAB_ID = 'deep-toolbox'
+export const inject = ['slots', 'locale']
 
 type T = (k: keyof typeof en) => string
 
@@ -53,13 +50,12 @@ const CSS = `
   --dtbx-err: var(--dsw-alias-state-error-primary, #e5484d);
   --dtbx-ok: var(--dsw-alias-state-success-primary, #30a46c);
   --dtbx-c1: #8e7cc3; --dtbx-c2: #4f8fd9; --dtbx-c3: #9aa4b1; --dtbx-c4: #d9a441; --dtbx-c5: #3fa37a;
-  height: 100%; overflow-y: auto; font-family: inherit; color: var(--dsw-alias-label-primary);
+  font-family: inherit; color: var(--dsw-alias-label-primary);
 }
 .dtbx-root svg { fill: currentColor; }
 .dtbx-root button, .dtbx-root input { font-family: inherit; }
-.dtbx-inner { width: 100%; max-width: 1080px; margin: 0 auto; box-sizing: border-box; padding: 32px 40px 48px; display: flex; flex-direction: column; gap: 16px; }
-.dtbx-title { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; }
-.dtbx-sub { margin: -8px 0 0; font-size: 13.5px; color: var(--dsw-alias-label-caption); }
+.dtbx-inner { width: 100%; max-width: 1080px; margin: 0 auto; box-sizing: border-box; padding: 8px 0 32px; display: flex; flex-direction: column; gap: 16px; }
+.dtbx-sub { margin: 0; font-size: 13.5px; color: var(--dsw-alias-label-caption); }
 .dtbx-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .dtbx-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .dtbx-tab { border: none; background: transparent; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13.5px; color: var(--dsw-alias-label-secondary); }
@@ -120,7 +116,6 @@ const CSS = `
 .dtbx-btn:disabled { opacity: 0.5; cursor: default; }
 .dtbx-muted { color: var(--dsw-alias-label-caption); font-size: 13px; }
 @media (max-width: 760px) {
-  .dtbx-inner { padding: 20px 16px 32px; }
   .dtbx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dtbx-group { overflow-x: auto; }
   .dtbx-legend { grid-template-columns: 1fr; }
@@ -204,7 +199,6 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
   return (
     <div className="dtbx-root">
       <div className="dtbx-inner">
-        <h1 className="dtbx-title">{t('title')}</h1>
         <p className="dtbx-sub">{t('subtitle')}</p>
 
         <div className="dtbx-toolbar">
@@ -364,30 +358,12 @@ function Row({ r, t, max, open, onToggle }: { r: ToolRow; t: T; max: number; ope
   )
 }
 
-/** Hammer, drawn to match dsh's outline icons (1.6 stroke, currentColor). */
-function ToolboxNavIcon({ size }: PropsRuntime<'sidebar.panellist'>): ReactNode {
-  const px = typeof size === 'number' ? size : 16
-  return (
-    <svg width={px} height={px} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ fill: 'none' }}>
-      <g transform="rotate(45 12 12)">
-        <rect x="10.8" y="8.4" width="2.4" height="13.4" rx="1.2" />
-        <rect x="4.6" y="3.4" width="10.4" height="5" rx="1" />
-        <rect x="15" y="2.4" width="3.4" height="7" rx="0.9" />
-      </g>
-    </svg>
-  )
-}
-
 export function apply(ctx: ClientContext): void {
   ensureStyles()
   const Page = (): ReactNode => <ToolboxPage ctx={ctx} />
   const t = ctx.locale.bind('toolbox')
   ctx.effect(() => ctx.locale.register('toolbox', { zh, en }), 'deep-toolbox: dictionaries')
-  ctx.effect(() => ctx.slots.inject('sidebar.panellist', () =>
-    ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 40, label: () => t('nav'), locale: 'toolbox' }, ToolboxNavIcon)),
-  'deep-toolbox: sidebar')
-  ctx.effect(() => ctx.slots.inject('main', () =>
-    ctx.slots.register({ name: 'main', key: PANEL_ID, locale: 'toolbox' } as any, Page as any)),
-  'deep-toolbox: main')
+  ctx.effect(() => ctx.slots.inject('plugins.tab', () =>
+    ctx.slots.register({ name: 'plugins.tab', id: TAB_ID, order: 50, label: () => t('nav'), locale: 'toolbox' } as any, Page as any)),
+  'deep-toolbox: plugins tab')
 }
