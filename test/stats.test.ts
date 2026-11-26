@@ -31,7 +31,7 @@ assert.equal(facts.calls.length, 2)
 assert.equal(facts.calls[0].ms, 500)
 assert.equal(facts.calls[1].error, 'Error: boom')
 assert.deepEqual(facts.latest?.names, ['bash', 'mcp__math__evaluate'])
-assert.equal(facts.offeredReq.get('bash'), 2)
+assert.equal(facts.headers.length, 2)
 assert.equal(groupOf('mcp__math__evaluate'), 'mcp:math')
 assert.equal(groupOf('bash'), 'built-in')
 
@@ -58,6 +58,8 @@ assert.equal(row('read').current, false, 'subagent headers do not define the cur
 assert.equal(row('old_tool').current, false)
 assert.equal(row('mcp__math__evaluate').calls, 0)
 assert.equal(report.current.tools, 2)
+assert.equal(row('bash').offeredRequests, 2)
+assert.equal(row('old_tool').offeredRequests, 1)
 assert.equal(report.current.unused, 1)
 assert.equal(report.current.cost, row('bash').cost + row('mcp__math__evaluate').cost)
 // a range that ends before every call drops them

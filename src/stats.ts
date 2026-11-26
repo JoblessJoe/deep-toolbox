@@ -59,15 +59,15 @@ interface SessionFacts {
   calls: { name: string; time: number; ms: number | null; resultTok: number | null; error: string | null }[]
   /** Tool schema costs offered in this session. */
   offered: Map<string, number>
-  /** Requests per tool name. */
-  offeredReq: Map<string, number>
+  /** Every request header: when, and which tools it carried. */
+  headers: { time: number; names: string[] }[]
   /** Newest main-agent request header: time + tool names. */
   latest: { time: number; names: string[] } | null
 }
 
 /** Parse one session log (JSONL text). Exported for tests. */
 export function parseSession(text: string): SessionFacts {
-  const facts: SessionFacts = { depth: 0, calls: [], offered: new Map(), offeredReq: new Map(), latest: null }
+  const facts: SessionFacts = { depth: 0, calls: [], offered: new Map(), headers: [], latest: null }
   const pending = new Map<string, number>() // callId -> index into facts.calls
   for (const line of text.split('\n')) {
     if (!line) continue
@@ -79,10 +79,8 @@ export function parseSession(text: string): SessionFacts {
         break
       case 'request/header': {
         const defs: any[] = e.data?.header?.tools ?? []
-        for (const def of defs) {
-          facts.offered.set(def.name, Math.max(facts.offered.get(def.name) ?? 0, tokens(def)))
-          facts.offeredReq.set(def.name, (facts.offeredReq.get(def.name) ?? 0) + 1)
-        }
+        for (const def of defs) facts.offered.set(def.name, Math.max(facts.offered.get(def.name) ?? 0, tokens(def)))
+        facts.headers.push({ time: e.time, names: defs.map(d => d.name) })
         if (facts.depth === 0 && (facts.latest === null || e.time > facts.latest.time)) {
           facts.latest = { time: e.time, names: defs.map(d => d.name) }
         }
@@ -158,6 +156,8 @@ function* sessionFiles(root: string): Generator<{ path: string; mtimeMs: number;
   }
 }
 
+// ponytail: parses synchronously on the host event loop (~1-2 s cold for ~100
+// sessions, then only changed files). Move to a worker if logs grow a lot.
 function factsFor(file: { path: string; mtimeMs: number; size: number }): SessionFacts | null {
   const key = `${file.mtimeMs}:${file.size}`
   const hit = cache.get(file.path)
@@ -192,7 +192,8 @@ export function collect(days = 30, root = sessionsRoot(), now = Date.now()): Sta
     const facts = factsFor(file)
     if (!facts) continue
     sessions++
-    for (const [name, cost] of facts.offered) { const r = row(name); r.cost = Math.max(r.cost, cost); r.offeredIn++; r.offeredRequests += facts.offeredReq.get(name) ?? 0 }
+    for (const [name, cost] of facts.offered) { const r = row(name); r.cost = Math.max(r.cost, cost); r.offeredIn++ }
+    for (const h of facts.headers) if (h.time >= since) for (const name of h.names) row(name).offeredRequests++
     if (facts.latest && (!latest || facts.latest.time > latest.time)) latest = facts.latest
     for (const c of facts.calls) {
       if (c.time < since) continue

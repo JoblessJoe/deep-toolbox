@@ -9,6 +9,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { IconCordisPluginOutlineRegular as ToolboxIcon } from '@deepseek-ai/dsh-client-ui-primitives'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { en, zh } from './locales'
@@ -137,9 +138,7 @@ function ago(ts: number, t: T): string {
 
 // --- page -----------------------------------------------------------------
 function ToolboxPage(): ReactNode {
-  const ctx = appCtx
-  if (!ctx) return null
-  const t = ctx.locale.bind('toolbox') as T
+  const t = appCtx!.locale.bind('toolbox') as T // set in apply() before any render
   const [days, setDays] = useState<number>(30)
   const [report, setReport] = useState<Report | null>(null)
   const [error, setError] = useState(false)
