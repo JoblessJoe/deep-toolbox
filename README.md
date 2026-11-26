@@ -25,7 +25,7 @@ Token numbers are estimates (characters ÷ 4). "Sent" is the raw volume before p
 dsh plugin --profile web add deep-toolbox
 ```
 
-Restart dsh. A **Toolbox** tab appears on the Plugins page, next to Installed and Discover.
+Restart dsh. A **Tool usage & startup cost** tab appears on the Plugins page, next to Installed and Discover.
 
 ## CLI
 

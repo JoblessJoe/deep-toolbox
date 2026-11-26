@@ -19,7 +19,7 @@
   },
   "dshhub": {
     "schemaVersion": 1,
-    "displayName": "Toolbox",
+    "displayName": "Tool usage & startup cost",
     "summary": "Tool usage, error rates and per-request token cost of every built-in and MCP tool, across all sessions.",
     "categories": ["Observability", "Web UI", "Tools"],
     "surfaces": ["host", "web"],

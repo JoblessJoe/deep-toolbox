@@ -1,9 +1,9 @@
 // `toolbox` namespace dictionaries. zh is the key-set source of truth.
 
 export const zh = {
-  'nav': '工具箱',
-  'title': '工具箱',
-  'subtitle': '智能体真正用到了哪些工具，每个工具在每次请求中占用多少 token。',
+  'nav': '工具用量与启动成本',
+  'title': '工具用量与启动成本',
+  'subtitle': '已安装的每个工具被调用了多少次，以及它在每个新对话的启动上下文中占用多少 token。',
   'range.days': '{n} 天',
   'filter.all': '全部',
   'filter.unused': '未使用',
@@ -45,9 +45,9 @@ export const zh = {
 } satisfies Record<string, string>
 
 export const en = {
-  'nav': 'Toolbox',
-  'title': 'Toolbox',
-  'subtitle': 'Which tools your agents actually use, and what each one costs in every request.',
+  'nav': 'Tool usage & startup cost',
+  'title': 'Tool usage & startup cost',
+  'subtitle': 'How often each installed tool is used, and how many tokens it adds to the startup context of every new chat.',
   'range.days': '{n} days',
   'filter.all': 'All',
   'filter.unused': 'Unused',
