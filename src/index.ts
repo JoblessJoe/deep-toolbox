@@ -10,9 +10,10 @@
 import { agentSummary, clampDays, collect } from './stats'
 import { trackOwners } from './owners'
 
-// Both optional: `connection` only exists in web profiles; without it the plugin
-// must still load so terminal/headless agents get the tool.
-export const inject = { connection: { required: false }, agents: { required: false } }
+// `inject` always means *required* in dsh's cordis. `connection` only exists in
+// web profiles, so the route waits for it in a sub-plugin (ctx.inject below);
+// the plugin itself (owners + agent tool) loads in every profile.
+export const inject = ['agents']
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
@@ -36,8 +37,8 @@ export function apply(ctx: any): void {
   // Remember which plugin registers which tool, so plugin tools don't count as built-in.
   ctx.effect(() => trackOwners(ctx), 'deep-toolbox.owners')
 
-  // The /api channel only exists in web profiles; the agent tool works everywhere.
-  if (ctx.connection?.fetch?.register) {
+  // The /api channel only exists in web profiles; this waits for it (never fires in headless/TUI).
+  ctx.inject(['connection'], (ctx: any) => {
     ctx.effect(() => ctx.connection.fetch.register({
       path: '/api/deep-toolbox/stats',
       methods: ['GET'],
@@ -50,12 +51,10 @@ export function apply(ctx: any): void {
         }
       },
     }), 'deep-toolbox.route/stats')
-  }
+  })
 
   // Tools are per agent: register on each new agent, and on those already alive.
-  if (ctx.on && ctx.agents) {
-    const add = (agent: any) => ctx.effect(() => agent.ctx.tools.register(reportTool), 'deep-toolbox.tool.toolbox_report')
-    ctx.on('agent/created', ({ agent }: { agent: any }) => add(agent))
-    try { for (const agent of ctx.agents.roots?.() ?? []) add(agent) } catch { /* agent/created covers the rest */ }
-  }
+  const add = (agent: any) => ctx.effect(() => agent.ctx.tools.register(reportTool), 'deep-toolbox.tool.toolbox_report')
+  ctx.on('agent/created', ({ agent }: { agent: any }) => add(agent))
+  try { for (const agent of ctx.agents.roots?.() ?? []) add(agent) } catch { /* agent/created covers the rest */ }
 }
