@@ -8,7 +8,6 @@ import type { ReactNode } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { IconCordisPluginOutlineRegular as ToolboxIcon } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -365,8 +364,19 @@ function Row({ r, t, max, open, onToggle }: { r: ToolRow; t: T; max: number; ope
   )
 }
 
+/** Hammer, drawn to match dsh's outline icons (1.6 stroke, currentColor). */
 function ToolboxNavIcon({ size }: PropsRuntime<'sidebar.panellist'>): ReactNode {
-  return <ToolboxIcon size={size} />
+  const px = typeof size === 'number' ? size : 16
+  return (
+    <svg width={px} height={px} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ fill: 'none' }}>
+      <g transform="rotate(45 12 12)">
+        <rect x="10.8" y="8.4" width="2.4" height="13.4" rx="1.2" />
+        <rect x="4.6" y="3.4" width="10.4" height="5" rx="1" />
+        <rect x="15" y="2.4" width="3.4" height="7" rx="0.9" />
+      </g>
+    </svg>
+  )
 }
 
 export function apply(ctx: ClientContext): void {
