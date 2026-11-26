@@ -362,20 +362,22 @@ export function agentSummary(r: StatsReport, top = 8): string {
     lines.push(`\nStartup context of a new chat ≈ ${k(r.startup.total)} tok:`)
     for (const p of r.startup.parts.slice(0, top)) lines.push(`- ${p.label}: ${k(p.tokens)}`)
   }
-  const groups = new Map<string, { calls: number; cost: number; tools: number }>()
-  for (const row of r.rows.filter(x => x.current)) {
-    const g = groups.get(row.group) ?? { calls: 0, cost: 0, tools: 0 }
-    g.calls += row.calls; g.cost += row.cost; g.tools++
+  // Every source seen in range, not only the latest request's: another profile or a
+  // since-removed MCP server must still be priceable.
+  const groups = new Map<string, { calls: number; cost: number; tools: number; current: boolean }>()
+  for (const row of r.rows.filter(x => x.offeredRequests > 0)) {
+    const g = groups.get(row.group) ?? { calls: 0, cost: 0, tools: 0, current: false }
+    g.calls += row.calls; g.cost += row.cost; g.tools++; g.current ||= row.current
     groups.set(row.group, g)
   }
-  lines.push('\nTool sources (calls in range / tok per request):')
+  lines.push('\nTool sources (tok each adds to every request it is loaded in, calls in range):')
   for (const [name, g] of [...groups].sort((a, b) => b[1].cost - a[1].cost)) {
-    lines.push(`- ${name}: ${g.calls} calls / ${k(g.cost)} tok (${g.tools} tools)${g.calls === 0 ? ' ← never used' : ''}`)
+    lines.push(`- ${sourceLabel(name)}: ${g.tools} tools, ${k(g.cost)} tok/request, ${g.calls} calls${g.calls === 0 ? ' ← never used' : ''}${g.current ? '' : ' (not in the latest request: removed, or another profile)'}`)
   }
   const unused = r.rows.filter(x => x.current && x.calls === 0).sort((a, b) => b.cost - a.cost)
   if (unused.length) lines.push(`\nNever called (${unused.length}, ${k(r.current.unusedCost)} tok per request), biggest: ${unused.slice(0, top).map(x => `${x.name} ${k(x.cost)}`).join(', ')}`)
   const failing = r.rows.filter(x => x.calls >= 3 && x.errors / x.calls >= 0.2)
-  if (failing.length) lines.push(`\nOften failing: ${failing.map(x => `${x.name} ${x.errors}/${x.calls} (${x.recentErrors[0]?.text.slice(0, 90) ?? ''})`).join('; ')}`)
+  if (failing.length) lines.push(`\nOften failing: ${failing.map(x => `${x.name} ${x.errors}/${x.calls}, ${k(x.cost)} tok/request (${x.recentErrors[0]?.text.slice(0, 90) ?? ''})`).join('; ')}`)
   lines.push('\nTo turn a source off: plugin_manager list_plugins → set_plugin enabled=false. Ask the user first; it changes every session.')
   return lines.join('\n')
 }

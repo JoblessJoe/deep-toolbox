@@ -83,7 +83,9 @@ assert.equal(report.rows.find(r => r.name === 'ancient_tool'), undefined, 'heade
 assert.equal(report.startup.parts[0].label, 'System prompt') // sorted biggest first
 assert.ok(report.startup.total > 0)
 const summary = agentSummary(report)
-assert.match(summary, /mcp:math: 0 calls/)
+assert.match(summary, /MCP: math: 1 tools, \d+ tok\/request, 0 calls ← never used\n/)
+assert.match(summary, /Built-in tools: .*\n/)
+assert.match(agentSummary(collect(30, root, now + 1000, { old_tool: 'gone-plugin' })), /Plugin: gone-plugin: 1 tools, \d+ tok\/request, .*not in the latest request/, 'removed sources stay priceable')
 assert.match(summary, /plugin_manager/)
 assert.equal(report.current.unused, 1)
 assert.equal(report.current.cost, row('bash').cost + row('mcp__math__evaluate').cost)
