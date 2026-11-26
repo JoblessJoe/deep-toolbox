@@ -1,30 +1,54 @@
 // deep-toolbox — host half.
 //
-// One read-only route for the Toolbox page: GET /api/deep-toolbox/stats?days=30.
-// The numbers come from dsh's own session logs (see ./stats), parsed files are
-// cached by mtime, so repeat views only re-read sessions that changed.
+// - GET /api/deep-toolbox/stats?days=30 for the Toolbox page.
+// - `toolbox_report`, a read-only agent tool: the same numbers as short text,
+//   so an agent can say "X costs 4k tok per request and was never used —
+//   turn it off?" and then use dsh's own `plugin_manager` (which asks the user).
+// Numbers come from dsh's session logs (see ./stats); parsed files are cached
+// by mtime, so repeat calls only re-read sessions that changed.
 
-import { collect } from './stats'
+import { agentSummary, clampDays, collect } from './stats'
 
-export const inject = ['connection']
+export const inject = ['connection', 'agents']
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
 
+/** Kept short on purpose: this description is sent with every request too. */
+const reportTool = {
+  name: 'toolbox_report',
+  description: 'Tool usage report from this dsh install\'s session logs: calls, errors, and the tokens each tool definition and startup-context part adds to every request. Use when the user asks about tool/context cost, or to suggest disabling unused tool sources (then ask the user before using plugin_manager).',
+  parameters: {
+    type: 'object',
+    properties: { days: { type: 'number', description: 'Look-back window in days (1-365, default 30).' } },
+  },
+  output: {
+    schema: { type: 'object', properties: { report: { type: 'string' } }, required: ['report'] },
+    render: (_args: unknown, value: any) => [{ type: 'text', text: value?.report ?? '' }],
+  },
+  execute: async (args: { days?: number }) => ({ report: agentSummary(collect(clampDays(args?.days ?? 30))) }),
+}
+
 export function apply(ctx: any): void {
-  // The /api channel only exists in web profiles.
-  if (!ctx.connection?.fetch?.register) return
-  ctx.effect(() => ctx.connection.fetch.register({
-    path: '/api/deep-toolbox/stats',
-    methods: ['GET'],
-    fetch: async (request: Request): Promise<Response> => {
-      try {
-        const raw = Number(new URL(request.url, 'http://x').searchParams.get('days') ?? 30)
-        const days = Number.isFinite(raw) ? Math.min(365, Math.max(1, Math.round(raw))) : 30
-        return json({ ok: true, ...collect(days) })
-      } catch (error) {
-        return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 500)
-      }
-    },
-  }), 'deep-toolbox.route/stats')
+  // The /api channel only exists in web profiles; the agent tool works everywhere.
+  if (ctx.connection?.fetch?.register) {
+    ctx.effect(() => ctx.connection.fetch.register({
+      path: '/api/deep-toolbox/stats',
+      methods: ['GET'],
+      fetch: async (request: Request): Promise<Response> => {
+        try {
+          return json({ ok: true, ...collect(clampDays(new URL(request.url, 'http://x').searchParams.get('days') ?? 30)) })
+        } catch (error) {
+          return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 500)
+        }
+      },
+    }), 'deep-toolbox.route/stats')
+  }
+
+  // Tools are per agent: register on each new agent, and on those already alive.
+  if (ctx.on && ctx.agents) {
+    const add = (agent: any) => ctx.effect(() => agent.ctx.tools.register(reportTool), 'deep-toolbox.tool.toolbox_report')
+    ctx.on('agent/created', ({ agent }: { agent: any }) => add(agent))
+    try { for (const agent of ctx.agents.roots?.() ?? []) add(agent) } catch { /* agent/created covers the rest */ }
+  }
 }

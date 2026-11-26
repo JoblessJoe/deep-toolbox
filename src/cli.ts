@@ -1,18 +1,21 @@
 // deep-toolbox CLI: the same report in a terminal (or for an agent via bash).
-//   deep-toolbox [days=30] [--errors <tool>] [--json]
-import { collect } from './stats'
+//   deep-toolbox [days=30] [--errors <tool>] [--json] [--agent]
+import { agentSummary, clampDays, collect } from './stats'
 
 const args = process.argv.slice(2)
 const take = (flag: string): string | null => { const i = args.indexOf(flag); return i < 0 ? null : (args.splice(i, 2)[1] ?? '') }
 const errorsFor = take('--errors')
 const asJson = args.includes('--json')
-const days = Number(args.find(a => /^\d+$/.test(a)) ?? 30)
+const asAgent = args.includes('--agent')
+const days = clampDays(args.find(a => /^\d+$/.test(a)) ?? 30)
 const report = collect(days)
 
 if (errorsFor !== null) {
   const row = report.rows.find(r => r.name === errorsFor)
   if (!row) console.log(`unknown tool: ${errorsFor}`)
   else console.log(row.recentErrors.map(e => `${new Date(e.time).toISOString().slice(0, 16)}  ${e.text}`).join('\n') || 'no errors')
+} else if (asAgent) {
+  console.log(agentSummary(report))
 } else if (asJson) {
   console.log(JSON.stringify(report, null, 1))
 } else {

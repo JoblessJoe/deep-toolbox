@@ -39,6 +39,9 @@ export const zh = {
   'retry': '重试',
   'refresh': '刷新',
   'how': 'token 数为估算（字符 ÷ 4）。“已发送”是缓存前的量。',
+  'startup.title': '新对话的启动上下文',
+  'startup.total': '约 {tok} token',
+  'startup.hint': '每个新对话在你输入之前就已带上这些内容（取自最近一次主对话的第一次请求）。',
 } satisfies Record<string, string>
 
 export const en = {
@@ -80,4 +83,7 @@ export const en = {
   'retry': 'Retry',
   'refresh': 'Refresh',
   'how': 'Token numbers are estimates (chars ÷ 4). "Sent" is before prompt caching.',
+  'startup.title': 'Startup context of a new chat',
+  'startup.total': '≈ {tok} tok',
+  'startup.hint': 'What every new chat carries before you type anything (from the newest main chat\'s first request).',
 } satisfies typeof zh

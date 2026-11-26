@@ -24,18 +24,22 @@ export const PANEL_ID = 'deep-toolbox' as MainPanelId
 export const inject = ['slots', 'locale', 'layout']
 
 type T = (k: keyof typeof en) => string
-let appCtx: ClientContext | null = null
 
 // --- wire types (mirror src/stats.ts) ------------------------------------
 interface ToolRow {
   name: string; group: string; calls: number; subCalls: number; errors: number
   avgMs: number | null; avgResultTok: number | null; cost: number
-  offeredIn: number; offeredRequests: number; lastUsed: number; current: boolean
+  offeredIn: number; offeredRequests: number; sentTok: number; lastUsed: number; current: boolean
   recentErrors: { time: number; text: string }[]
 }
 interface Report {
   ok: true; days: number; generatedAt: number; sessions: number; rows: ToolRow[]
   current: { tools: number; cost: number; unused: number; unusedCost: number }
+  startup: { total: number; parts: { kind: StartupKind; label: string; tokens: number }[] }
+}
+type StartupKind = 'system' | 'instructions' | 'context' | 'skills' | 'tools'
+const KIND_COLOR: Record<StartupKind, string> = {
+  system: 'var(--dtbx-c1)', instructions: 'var(--dtbx-c2)', context: 'var(--dtbx-c3)', skills: 'var(--dtbx-c4)', tools: 'var(--dtbx-c5)',
 }
 
 // --- styles ---------------------------------------------------------------
@@ -49,6 +53,7 @@ const CSS = `
   --dtbx-warn: var(--dsw-alias-state-warning-primary, #d29922);
   --dtbx-err: var(--dsw-alias-state-error-primary, #e5484d);
   --dtbx-ok: var(--dsw-alias-state-success-primary, #30a46c);
+  --dtbx-c1: #8e7cc3; --dtbx-c2: #4f8fd9; --dtbx-c3: #9aa4b1; --dtbx-c4: #d9a441; --dtbx-c5: #3fa37a;
   height: 100%; overflow-y: auto; font-family: inherit; color: var(--dsw-alias-label-primary);
 }
 .dtbx-root svg { fill: currentColor; }
@@ -99,6 +104,16 @@ const CSS = `
 .dtbx-error { display: flex; gap: 10px; font-size: 12.5px; padding: 3px 0; white-space: normal; text-align: left; }
 .dtbx-error time { flex: none; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
 .dtbx-error span { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.dtbx-startup { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--dtbx-line); }
+.dtbx-startup-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dtbx-h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.dtbx-stack { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--dtbx-line); }
+.dtbx-stack span { height: 100%; }
+.dtbx-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; font-size: 13px; }
+.dtbx-legend-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dtbx-dot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
+.dtbx-legend-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtbx-legend-num { flex: none; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
 .dtbx-note { font-size: 12px; color: var(--dsw-alias-label-caption); }
 .dtbx-notice { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-radius: 10px; font-size: 13px; color: var(--dtbx-err); background: color-mix(in srgb, var(--dtbx-err) 8%, transparent); }
 .dtbx-btn { border: 1px solid var(--dtbx-line); background: transparent; border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; color: var(--dsw-alias-label-primary); }
@@ -109,6 +124,7 @@ const CSS = `
   .dtbx-inner { padding: 20px 16px 32px; }
   .dtbx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dtbx-group { overflow-x: auto; }
+  .dtbx-legend { grid-template-columns: 1fr; }
   .dtbx-hide-narrow { display: none; }
 }
 `
@@ -137,8 +153,8 @@ function ago(ts: number, t: T): string {
 }
 
 // --- page -----------------------------------------------------------------
-function ToolboxPage(): ReactNode {
-  const t = appCtx!.locale.bind('toolbox') as T // set in apply() before any render
+function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
+  const t = ctx.locale.bind('toolbox') as T
   const [days, setDays] = useState<number>(30)
   const [report, setReport] = useState<Report | null>(null)
   const [error, setError] = useState(false)
@@ -148,15 +164,19 @@ function ToolboxPage(): ReactNode {
   const [showRemoved, setShowRemoved] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
 
-  const load = useCallback(() => {
+  const [tick, setTick] = useState(0)
+  const load = useCallback(() => setTick(n => n + 1), [])
+  useEffect(() => {
+    // Abort the previous request so a slow older range can't overwrite a newer one.
+    const ac = new AbortController()
     setLoading(true); setError(false)
-    fetch(`/api/deep-toolbox/stats?days=${days}`, { headers: { accept: 'application/json' } })
+    fetch(`/api/deep-toolbox/stats?days=${days}`, { headers: { accept: 'application/json' }, signal: ac.signal })
       .then(r => r.json())
       .then((d) => { if (d?.ok) setReport(d); else setError(true) })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
-  }, [days])
-  useEffect(load, [load])
+      .catch((e) => { if (!ac.signal.aborted) setError(true) })
+      .finally(() => { if (!ac.signal.aborted) setLoading(false) })
+    return () => ac.abort()
+  }, [days, tick])
 
   const groups = useMemo(() => {
     if (!report) return []
@@ -171,7 +191,7 @@ function ToolboxPage(): ReactNode {
       group, rows: rs,
       calls: rs.reduce((n, r) => n + r.calls, 0),
       cost: rs.filter(r => r.current).reduce((n, r) => n + r.cost, 0),
-      sent: rs.reduce((n, r) => n + r.cost * r.offeredRequests, 0),
+      sent: rs.reduce((n, r) => n + r.sentTok, 0),
     })).sort((a, b) => b.calls - a.calls || b.cost - a.cost)
   }, [report, filter, query, showRemoved])
 
@@ -219,6 +239,8 @@ function ToolboxPage(): ReactNode {
                 hint={t('card.callsHint').replace('{n}', fmt(totals.calls))} />
             </div>
 
+            {report.startup.total > 0 && <Startup t={t} startup={report.startup} />}
+
             <div className="dtbx-toolbar">
               <div className="dtbx-tabs" role="tablist">
                 {(['all', 'unused', 'errors'] as const).map(f => (
@@ -261,6 +283,32 @@ function ToolboxPage(): ReactNode {
         )}
       </div>
     </div>
+  )
+}
+
+function Startup({ t, startup }: { t: T; startup: Report['startup'] }): ReactNode {
+  return (
+    <section className="dtbx-startup">
+      <div className="dtbx-startup-head">
+        <h2 className="dtbx-h2">{t('startup.title')}</h2>
+        <span className="dtbx-muted">{t('startup.total').replace('{tok}', fmt(startup.total))}</span>
+      </div>
+      <div className="dtbx-stack" role="img" aria-label={t('startup.title')}>
+        {startup.parts.map((p, i) => (
+          <span key={i} title={`${p.label}: ${fmt(p.tokens)} tok`} style={{ width: `${(p.tokens / startup.total) * 100}%`, background: KIND_COLOR[p.kind] }} />
+        ))}
+      </div>
+      <div className="dtbx-legend">
+        {startup.parts.map((p, i) => (
+          <div key={i} className="dtbx-legend-row">
+            <span className="dtbx-dot" style={{ background: KIND_COLOR[p.kind] }} />
+            <span className="dtbx-legend-label" title={p.label}>{p.label}</span>
+            <span className="dtbx-legend-num">{compact(p.tokens)} · {Math.round((p.tokens / startup.total) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+      <span className="dtbx-note">{t('startup.hint')}</span>
+    </section>
   )
 }
 
@@ -322,14 +370,14 @@ function ToolboxNavIcon({ size }: PropsRuntime<'sidebar.panellist'>): ReactNode 
 }
 
 export function apply(ctx: ClientContext): void {
-  appCtx = ctx
   ensureStyles()
+  const Page = (): ReactNode => <ToolboxPage ctx={ctx} />
   const t = ctx.locale.bind('toolbox')
   ctx.effect(() => ctx.locale.register('toolbox', { zh, en }), 'deep-toolbox: dictionaries')
   ctx.effect(() => ctx.slots.inject('sidebar.panellist', () =>
     ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 40, label: () => t('nav'), locale: 'toolbox' }, ToolboxNavIcon)),
   'deep-toolbox: sidebar')
   ctx.effect(() => ctx.slots.inject('main', () =>
-    ctx.slots.register({ name: 'main', key: PANEL_ID, locale: 'toolbox' } as any, ToolboxPage as any)),
+    ctx.slots.register({ name: 'main', key: PANEL_ID, locale: 'toolbox' } as any, Page as any)),
   'deep-toolbox: main')
 }
