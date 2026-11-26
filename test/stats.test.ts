@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
-import { readOwners, trackOwners } from '../src/owners.ts'
+import { readOwners, stackFiles, trackOwners } from '../src/owners.ts'
 import { agentSummary, clampDays, collect, mergeParts, decodeZstdFrames, groupOf, parseSession } from '../src/stats.ts'
 
 const now = Date.now()
@@ -96,16 +96,26 @@ assert.equal(owned.rows.find(r => r.name === 'bash')!.group, 'plugin:my-plugin')
 assert.ok(owned.startup.parts.some(p => p.label === 'Plugin: my-plugin'))
 assert.equal(groupOf('mcp__x__y', { mcp__x__y: 'z' }), 'mcp:x', 'MCP prefix wins')
 
-// trackOwners: wraps register, records non-core callers, keeps working, undoes cleanly
+// trackOwners: attributes by the caller's package (stack → nearest package.json)
+const mkPkg = (dir: string, name: string) => {
+  mkdirSync(join(root, dir), { recursive: true })
+  writeFileSync(join(root, dir, 'package.json'), JSON.stringify({ name }))
+  writeFileSync(join(root, dir, 'index.mjs'), 'export function call(svc, name) { return svc.register({ name }) }\n')
+  return import(join(root, dir, 'index.mjs'))
+}
+const plugin = await mkPkg('cool', 'cool-plugin')
+const core = await mkPkg('core', '@deepseek-ai/dsh-tool-fs')
 const svcTarget = { register(def: { name: string }) { return def.name } }
+const original = svcTarget.register
 const ownersPath = join(root, 'owners.json')
+writeFileSync(ownersPath, JSON.stringify({ read: 'stale-plugin' }))
 const undo = trackOwners({ get: () => svcTarget }, ownersPath)
-const asPlugin = { ctx: { fiber: { name: 'cool-plugin' } } }
-const asCore = { ctx: { fiber: { name: '@deepseek-ai/dsh-tool-fs' } } }
-assert.equal(svcTarget.register.call(asPlugin, { name: 'cool_tool' }), 'cool_tool')
-svcTarget.register.call(asCore, { name: 'read' })
+assert.equal(plugin.call(svcTarget, 'cool_tool'), 'cool_tool', 'still registers')
+core.call(svcTarget, 'read')
+plugin.call(svcTarget, 'mcp__srv__x')
 await new Promise(r => setTimeout(r, 700))
-assert.deepEqual(readOwners(ownersPath), { cool_tool: 'cool-plugin' })
+assert.deepEqual(readOwners(ownersPath), { cool_tool: 'cool-plugin' }, 'plugin recorded, core cleared, MCP ignored')
 undo()
-assert.equal(svcTarget.register.name, 'register', 'original restored')
+assert.equal(svcTarget.register, original, 'original restored')
+assert.deepEqual(stackFiles('Error\n    at f (/a/b.js:1:2)\n    at file:///c/d.mjs:3:4\n    at node:internal/x:1:1'), ['/a/b.js', '/c/d.mjs'])
 console.log('stats.test: ok')
