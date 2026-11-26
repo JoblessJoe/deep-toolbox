@@ -38,7 +38,7 @@ assert.equal(facts.calls[0].ms, 500)
 assert.equal(facts.calls[1].error, 'Error: boom')
 assert.deepEqual(facts.latest?.names, ['bash', 'mcp__math__evaluate'])
 assert.equal(facts.offered.get('bash')!.size, 1) // one day bucket
-assert.deepEqual(facts.startup?.parts.map(p => p.label), ['System prompt', '~/.dsh/AGENTS.md', 'AGENTS.md', 'Built-in tools'], 'user prompt excluded, instructions split by heading, tools grouped')
+assert.deepEqual(facts.startup?.parts.map(p => p.label), ['System prompt', '~/.dsh/AGENTS.md', 'AGENTS.md', 'Built-in tools'], 'user prompt excluded, one part per instruction file, tools grouped')
 // a header without time falls back to the previous event's time instead of vanishing
 const noTime = parseSession(lines([{ type: 'session' }, { type: 'tool/call', time: now, data: { callId: 'x', name: 'a' } }, { type: 'request/header', data: { header: { tools: [tool('a')] } } }]))
 assert.equal([...noTime.offered.get('a')!.values()][0].req, 1)

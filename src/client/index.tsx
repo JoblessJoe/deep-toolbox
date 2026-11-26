@@ -62,10 +62,6 @@ const CSS = `
 .dtbx-tab:hover { background: var(--dtbx-hover); color: var(--dsw-alias-label-primary); }
 .dtbx-tab[aria-selected="true"] { background: var(--dtbx-fill); color: var(--dsw-alias-label-primary); }
 .dtbx-end { display: flex; align-items: center; gap: 6px; }
-.dtbx-search { display: flex; align-items: center; padding: 5px 10px; background: var(--dtbx-fill); border: 1px solid transparent; border-radius: 10px; }
-.dtbx-search:focus-within { border-color: var(--dtbx-line); }
-.dtbx-search input { width: 180px; border: none; outline: none; background: transparent; font-size: 13px; color: var(--dsw-alias-label-primary); }
-.dtbx-search input::placeholder { color: var(--dsw-alias-label-caption); }
 .dtbx-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dsw-alias-label-secondary); cursor: pointer; user-select: none; }
 .dtbx-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .dtbx-card { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--dtbx-fill); }
@@ -73,8 +69,6 @@ const CSS = `
 .dtbx-card-value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .dtbx-card-hint { font-size: 12px; color: var(--dsw-alias-label-caption); }
 .dtbx-card-warn .dtbx-card-value { color: var(--dtbx-warn); }
-.dtbx-group { border: 1px solid var(--dtbx-line); border-radius: 12px; overflow: hidden; }
-.dtbx-group-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--dtbx-fill); font-size: 13.5px; }
 .dtbx-group-name { font-weight: 600; }
 .dtbx-group-meta { margin-left: auto; display: flex; gap: 14px; font-size: 12.5px; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
 .dtbx-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -106,6 +100,7 @@ const CSS = `
 .dtbx-tip-warn .dtbx-tip-dot { background: var(--dtbx-warn); }
 .dtbx-tip-err .dtbx-tip-dot { background: var(--dtbx-err); }
 .dtbx-sources { display: flex; flex-direction: column; border: 1px solid var(--dtbx-line); border-radius: 12px; overflow: hidden; }
+.dtbx-table-wrap { overflow-x: auto; border-top: 1px solid var(--dtbx-line); }
 .dtbx-source + .dtbx-source { border-top: 1px solid var(--dtbx-line); }
 .dtbx-source-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: transparent; cursor: pointer; font-size: 13.5px; color: var(--dsw-alias-label-primary); text-align: left; }
 .dtbx-source-head:hover { background: var(--dtbx-hover); }
@@ -115,7 +110,6 @@ const CSS = `
 .dtbx-verdict-busy { color: var(--dtbx-ok); background: color-mix(in srgb, var(--dtbx-ok) 12%, transparent); }
 .dtbx-verdict-rare { color: var(--dtbx-warn); background: color-mix(in srgb, var(--dtbx-warn) 12%, transparent); }
 .dtbx-verdict-never { color: var(--dtbx-err); background: color-mix(in srgb, var(--dtbx-err) 10%, transparent); }
-.dtbx-source .dtbx-table { border-top: 1px solid var(--dtbx-line); }
 .dtbx-link { align-self: flex-start; border: none; background: transparent; padding: 0; cursor: pointer; font-size: 13px; color: var(--dsw-alias-label-secondary); text-decoration: underline; text-underline-offset: 2px; }
 .dtbx-startup { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--dtbx-line); }
 .dtbx-startup-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -136,7 +130,6 @@ const CSS = `
 @media (max-width: 760px) {
   .dtbx-cards { grid-template-columns: 1fr; }
   .dtbx-group-meta span:not(.dtbx-strong) { display: none; }
-  .dtbx-group { overflow-x: auto; }
   .dtbx-legend { grid-template-columns: 1fr; }
   .dtbx-hide-narrow { display: none; }
 }
@@ -180,31 +173,31 @@ function sourcesOf(report: Report, t: T): Source[] {
   for (const r of report.rows) by.set(r.group, [...(by.get(r.group) ?? []), r])
   return [...by].map(([group, rows]) => {
     const cur = rows.filter(r => r.current)
-    const calls = rows.reduce((n, r) => n + r.calls, 0)
+    const calls = cur.reduce((n, r) => n + r.calls, 0) // installed tools only: removed ones don't make a source "used"
     return {
       group, rows, calls, label: group === 'built-in' ? t('group.builtin') : group.slice(4), mcp: group !== 'built-in',
-      errors: rows.reduce((n, r) => n + r.errors, 0),
+      errors: cur.reduce((n, r) => n + r.errors, 0),
       cost: cur.reduce((n, r) => n + r.cost, 0), tools: cur.length,
       sent: rows.reduce((n, r) => n + r.sentTok, 0),
       verdict: verdictOf(calls),
     }
-  }).filter(s => s.tools > 0 || s.calls > 0)
+  }).filter(s => s.tools > 0 || s.rows.some(r => r.calls > 0))
     .sort((a, b) => b.cost - a.cost)
 }
 
 /** Plain-language findings, most useful first. */
 function tipsOf(report: Report, sources: Source[], t: T): Tip[] {
   const tips: Tip[] = []
-  const fill = (k: keyof typeof en, v: Record<string, string>) => Object.entries(v).reduce((s, [a, b]) => s.replace(`{${a}}`, b), t(k))
+  const fill = (k: keyof typeof en, v: Record<string, string>) => Object.entries(v).reduce((s, [a, b]) => s.replace(`{${a}}`, () => b), t(k)) // fn: no $-patterns from error text
   const days = String(report.days)
+  for (const r of report.rows.filter(x => x.current && failsOften(x)).sort((a, b) => b.errors - a.errors)) {
+    tips.push({ level: 'err', text: fill('tip.fails', { tool: r.name, n: String(r.errors), of: String(r.calls), why: r.recentErrors[0]?.text.slice(0, 110) ?? '' }) })
+  }
   for (const s of sources.filter(x => x.mcp && x.tools > 0 && x.verdict === 'never')) {
     tips.push({ level: 'warn', text: fill('tip.never', { src: s.label, tok: compact(s.cost), days }) })
   }
   for (const s of sources.filter(x => x.mcp && x.tools > 0 && x.verdict === 'rare' && x.cost >= 1000)) {
     tips.push({ level: 'warn', text: fill('tip.rare', { src: s.label, n: String(s.calls), tok: compact(s.cost), days }) })
-  }
-  for (const r of report.rows.filter(failsOften).sort((a, b) => b.errors - a.errors)) {
-    tips.push({ level: 'err', text: fill('tip.fails', { tool: r.name, n: String(r.errors), of: String(r.calls), why: r.recentErrors[0]?.text.slice(0, 110) ?? '' }) })
   }
   const builtinUnused = report.rows.filter(r => r.current && r.group === 'built-in' && r.calls === 0)
   if (builtinUnused.length >= 5) {
@@ -215,7 +208,7 @@ function tipsOf(report: Report, sources: Source[], t: T): Tip[] {
 }
 
 function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
-  const t = ctx.locale.bind('toolbox') as T
+  const t = useMemo(() => ctx.locale.bind('toolbox') as T, [ctx])
   const [days, setDays] = useState<number>(30)
   const [report, setReport] = useState<Report | null>(null)
   const [error, setError] = useState(false)
@@ -273,7 +266,7 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
           <>
             <div className="dtbx-cards">
               <Card label={t('card.startup')} value={`${compact(report.startup.total || report.current.cost)} tok`}
-                hint={t('card.startupHint').replace('{tok}', compact(report.current.cost))} />
+                hint={t('card.startupHint').replace('{tok}', compact(report.startup.parts.filter(p => p.kind === 'tools').reduce((n, p) => n + p.tokens, 0)))} />
               <Card warn={report.current.unusedCost >= 2000} label={t('card.unused')} value={`${compact(report.current.unusedCost)} tok`}
                 hint={t('card.unusedHint').replace('{n}', fmt(report.current.unused)).replace('{days}', String(report.days))} />
               <Card warn={totals.calls > 0 && totals.errors / totals.calls >= 0.05} label={t('card.errors')}
@@ -284,7 +277,7 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
             <section className="dtbx-panel">
               <h2 className="dtbx-h2">{t('tips.title')}</h2>
               <ul className="dtbx-tips">
-                {tips.slice(0, 6).map((tip, i) => (
+                {tips.map((tip, i) => (
                   <li key={i} className={`dtbx-tip dtbx-tip-${tip.level}`}><span className="dtbx-tip-dot" />{tip.text}</li>
                 ))}
               </ul>
@@ -318,7 +311,7 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
                         </span>
                       </button>
                       {open && (
-                        <table className="dtbx-table">
+                        <div className="dtbx-table-wrap"><table className="dtbx-table">
                           <thead>
                             <tr>
                               <th>{t('col.tool')}</th><th>{t('col.calls')}</th><th>{t('col.errors')}</th>
@@ -330,7 +323,7 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
                             {rows.length === 0 && <tr><td colSpan={7} className="dtbx-muted">{t('empty')}</td></tr>}
                             {rows.map(r => <Row key={r.name} r={r} t={t} max={totals.maxCalls} open={openTool === r.name} onToggle={() => setOpenTool(openTool === r.name ? null : r.name)} />)}
                           </tbody>
-                        </table>
+                        </table></div>
                       )}
                     </div>
                   )
