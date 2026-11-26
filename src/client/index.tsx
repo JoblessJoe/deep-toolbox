@@ -307,8 +307,8 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
                         {s.kind !== 'built-in' && <span className="dtbx-badge">{s.kind === 'mcp' ? 'MCP' : t('badge.plugin')}</span>}
                         <span className={`dtbx-badge dtbx-verdict-${s.verdict}`}>{t(`verdict.${s.verdict}`)}</span>
                         <span className="dtbx-group-meta">
-                          <span>{t('source.tools').replace('{n}', fmt(s.tools))}</span>
-                          <span>{t('source.calls').replace('{n}', fmt(s.calls))}</span>
+                          <span>{t(s.tools === 1 ? 'source.tool' : 'source.tools').replace('{n}', fmt(s.tools))}</span>
+                          <span>{t(s.calls === 1 ? 'source.call' : 'source.calls').replace('{n}', fmt(s.calls))}</span>
                           <span className="dtbx-strong">{t('source.cost').replace('{tok}', compact(s.cost))}</span>
                         </span>
                       </button>

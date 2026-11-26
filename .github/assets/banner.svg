@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#f6c343" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#f6c343" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="420" rx="20" fill="#0d1117"/>
+  <circle cx="930" cy="210" r="260" fill="url(#glow)"/>
+
+  <!-- icon (same as icon.svg) -->
+  <svg x="60" y="101" width="60" height="60" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="14" fill="#1f2430"/>
+    <g transform="translate(8 8) scale(2) rotate(45 12 12)">
+      <rect x="10.6" y="8" width="2.8" height="14.5" rx="1.4" fill="#c98b4a"/>
+      <rect x="4.5" y="3" width="11" height="5.4" rx="1.2" fill="#d7dde8"/>
+      <rect x="15" y="1.8" width="4" height="7.8" rx="1" fill="#f6c343"/>
+    </g>
+  </svg>
+
+  <text x="134" y="150" fill="#e6edf3" font-size="62" font-weight="700" letter-spacing="-1">deep-toolbox</text>
+  <text x="62" y="198" fill="#8b949e" font-size="22">Tool usage and startup cost for the DeepSeek Harness.</text>
+  <text x="62" y="228" fill="#8b949e" font-size="22">Keep the tools you use. Drop the dead weight.</text>
+
+  <g font-size="15" font-weight="600">
+    <rect x="62" y="262" width="88" height="30" rx="15" fill="#f6c343" fill-opacity=".12" stroke="#f6c343" stroke-opacity=".45"/>
+    <text x="106" y="282" fill="#f6c343" text-anchor="middle">calls</text>
+    <rect x="160" y="262" width="94" height="30" rx="15" fill="#f6c343" fill-opacity=".12" stroke="#f6c343" stroke-opacity=".45"/>
+    <text x="207" y="282" fill="#f6c343" text-anchor="middle">errors</text>
+    <rect x="264" y="262" width="134" height="30" rx="15" fill="#f6c343" fill-opacity=".12" stroke="#f6c343" stroke-opacity=".45"/>
+    <text x="331" y="282" fill="#f6c343" text-anchor="middle">tokens / chat</text>
+    <rect x="408" y="262" width="120" height="30" rx="15" fill="#f6c343" fill-opacity=".12" stroke="#f6c343" stroke-opacity=".45"/>
+    <text x="468" y="282" fill="#f6c343" text-anchor="middle">never used</text>
+  </g>
+  <text x="62" y="334" fill="#6e7681" font-size="16">Reads dsh's session logs · stays on your machine · no deps</text>
+
+  <!-- mock startup card -->
+  <g transform="translate(700 70)">
+    <rect width="440" height="280" rx="16" fill="#161b22" stroke="#30363d"/>
+    <text x="24" y="44" fill="#e6edf3" font-size="20" font-weight="700">A new chat starts with</text>
+    <text x="24" y="88" fill="#e6edf3" font-size="40" font-weight="700">26.6K tok</text>
+    <g transform="translate(24 110)">
+      <rect width="113" height="12" rx="3" fill="#4a90d9"/>
+      <rect x="113" width="68" height="12" fill="#e07b39"/>
+      <rect x="181" width="45" height="12" fill="#3a9d6e"/>
+      <rect x="226" width="42" height="12" fill="#a45fd0"/>
+      <rect x="268" width="31" height="12" fill="#d9a537"/>
+      <rect x="299" width="93" height="12" rx="3" fill="#6e7681"/>
+    </g>
+    <g font-size="14">
+      <circle cx="30" cy="160" r="4" fill="#4a90d9"/><text x="42" y="165" fill="#c9d1d9">Built-in tools</text><text x="416" y="165" fill="#8b949e" text-anchor="end">7.7K · used a lot</text>
+      <circle cx="30" cy="188" r="4" fill="#e07b39"/><text x="42" y="193" fill="#c9d1d9">MCP: math</text><text x="416" y="193" fill="#f0883e" text-anchor="end">4.6K · never used</text>
+      <circle cx="30" cy="216" r="4" fill="#3a9d6e"/><text x="42" y="221" fill="#c9d1d9">MCP: browser</text><text x="416" y="221" fill="#f0883e" text-anchor="end">3.1K · never used</text>
+      <circle cx="30" cy="244" r="4" fill="#a45fd0"/><text x="42" y="249" fill="#c9d1d9">MCP: github</text><text x="416" y="249" fill="#8b949e" text-anchor="end">2.9K · used a lot</text>
+    </g>
+  </g>
+</svg>
