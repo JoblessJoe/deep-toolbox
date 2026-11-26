@@ -296,7 +296,7 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
                 </label>
               </div>
               <div className="dtbx-sources">
-                {sources.map(s => {
+                {sources.filter(s => showRemoved || s.tools > 0).map(s => {
                   const open = openSource === s.group
                   const rows = s.rows.filter(r => showRemoved || r.current)
                   return (

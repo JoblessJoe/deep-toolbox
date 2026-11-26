@@ -11,14 +11,14 @@ Every tool you install (built-in, plugin or MCP server) sends its full definitio
 - **Never used** — tools you pay for in every request but nobody calls
 - **Removed** — tools that were used before but are no longer configured
 
-![Summary: startup tokens, unused cost, failing tools](docs/summary.png)
+![Summary: startup tokens, unused cost, failing tools](https://raw.githubusercontent.com/JoblessJoe/deep-toolbox/main/.github/assets/summary.png)
 
 The page leads with a summary — what a new chat starts with, what you pay for but never use, which tools fail — and plain-language tips ("math adds 4.6k tok to every new chat but was not used in 30 days"). Below that:
 
 - **Startup context** — a chart of everything a new chat carries before you type: built-in tools, each MCP server, each AGENTS.md file, the system prompt, the skill list.
 - **Tool sources** — one row per source (built-in, each MCP server) tagged *used a lot / rarely used / never used*. Click a source for its per-tool table.
 
-![Startup context chart and per-source tool table](docs/sources.png)
+![Startup context chart and per-source tool table](https://raw.githubusercontent.com/JoblessJoe/deep-toolbox/main/.github/assets/sources.png)
 
 ## For agents
 
