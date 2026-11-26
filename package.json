@@ -1,6 +1,6 @@
 {
   "name": "deep-toolbox",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "See which tools your DeepSeek Harness agents actually use, how often each one fails, and what its definition costs in every request — so you know which tools and MCP servers to keep or drop.",
   "icon": "./icon.svg",
   "author": "Johannes Tebbert <info@joblessjoe.com> (https://joblessjoe.com)",
