@@ -8,8 +8,11 @@
 // by mtime, so repeat calls only re-read sessions that changed.
 
 import { agentSummary, clampDays, collect } from './stats'
+import { trackOwners } from './owners'
 
-export const inject = ['connection', 'agents']
+// Both optional: `connection` only exists in web profiles; without it the plugin
+// must still load so terminal/headless agents get the tool.
+export const inject = { connection: { required: false }, agents: { required: false } }
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
@@ -30,6 +33,9 @@ const reportTool = {
 }
 
 export function apply(ctx: any): void {
+  // Remember which plugin registers which tool, so plugin tools don't count as built-in.
+  ctx.effect(() => trackOwners(ctx), 'deep-toolbox.owners')
+
   // The /api channel only exists in web profiles; the agent tool works everywhere.
   if (ctx.connection?.fetch?.register) {
     ctx.effect(() => ctx.connection.fetch.register({

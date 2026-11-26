@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
+import { readOwners, trackOwners } from '../src/owners.ts'
 import { agentSummary, clampDays, collect, mergeParts, decodeZstdFrames, groupOf, parseSession } from '../src/stats.ts'
 
 const now = Date.now()
@@ -38,7 +39,8 @@ assert.equal(facts.calls[0].ms, 500)
 assert.equal(facts.calls[1].error, 'Error: boom')
 assert.deepEqual(facts.latest?.names, ['bash', 'mcp__math__evaluate'])
 assert.equal(facts.offered.get('bash')!.size, 1) // one day bucket
-assert.deepEqual(facts.startup?.parts.map(p => p.label), ['System prompt', '~/.dsh/AGENTS.md', 'AGENTS.md', 'Built-in tools'], 'user prompt excluded, one part per instruction file, tools grouped')
+assert.deepEqual(facts.startup?.parts.map(p => p.label), ['System prompt', '~/.dsh/AGENTS.md', 'AGENTS.md'], 'user prompt excluded, one part per instruction file')
+assert.deepEqual(facts.startup?.tools.map(t => t.name), ['ancient_tool'], 'first request\'s tools kept for per-source grouping')
 // a header without time falls back to the previous event's time instead of vanishing
 const noTime = parseSession(lines([{ type: 'session' }, { type: 'tool/call', time: now, data: { callId: 'x', name: 'a' } }, { type: 'request/header', data: { header: { tools: [tool('a')] } } }]))
 assert.equal([...noTime.offered.get('a')!.values()][0].req, 1)
@@ -62,7 +64,7 @@ mkdirSync(join(root, 'cwd', 's1'), { recursive: true })
 mkdirSync(join(root, 'cwd', 's2'), { recursive: true })
 writeFileSync(join(root, 'cwd', 's1', 'session.v4.jsonl.zstd'), Buffer.concat(main.split('\n').map(l => zstdCompressSync(Buffer.from(l + '\n')))))
 writeFileSync(join(root, 'cwd', 's2', 'session.v3.jsonl.zstd'), zstdCompressSync(Buffer.from(sub)))
-const report = collect(30, root, now + 1000)
+const report = collect(30, root, now + 1000, {})
 const row = (n: string) => report.rows.find(r => r.name === n)!
 assert.equal(report.sessions, 2)
 assert.equal(row('bash').calls, 3)
@@ -86,5 +88,24 @@ assert.match(summary, /plugin_manager/)
 assert.equal(report.current.unused, 1)
 assert.equal(report.current.cost, row('bash').cost + row('mcp__math__evaluate').cost)
 // a range that ends before every call drops them
-assert.equal(collect(1, root, now + 3 * 86_400_000).sessions, 0)
+assert.equal(collect(1, root, now + 3 * 86_400_000, {}).sessions, 0)
+
+// plugin owners: a known owner moves a tool out of built-in, in rows and in the startup chart
+const owned = collect(30, root, now + 1000, { bash: 'my-plugin', ancient_tool: 'my-plugin' })
+assert.equal(owned.rows.find(r => r.name === 'bash')!.group, 'plugin:my-plugin')
+assert.ok(owned.startup.parts.some(p => p.label === 'Plugin: my-plugin'))
+assert.equal(groupOf('mcp__x__y', { mcp__x__y: 'z' }), 'mcp:x', 'MCP prefix wins')
+
+// trackOwners: wraps register, records non-core callers, keeps working, undoes cleanly
+const svcTarget = { register(def: { name: string }) { return def.name } }
+const ownersPath = join(root, 'owners.json')
+const undo = trackOwners({ get: () => svcTarget }, ownersPath)
+const asPlugin = { ctx: { fiber: { name: 'cool-plugin' } } }
+const asCore = { ctx: { fiber: { name: '@deepseek-ai/dsh-tool-fs' } } }
+assert.equal(svcTarget.register.call(asPlugin, { name: 'cool_tool' }), 'cool_tool')
+svcTarget.register.call(asCore, { name: 'read' })
+await new Promise(r => setTimeout(r, 700))
+assert.deepEqual(readOwners(ownersPath), { cool_tool: 'cool-plugin' })
+undo()
+assert.equal(svcTarget.register.name, 'register', 'original restored')
 console.log('stats.test: ok')

@@ -159,7 +159,7 @@ function ago(ts: number, t: T): string {
 
 // --- page -----------------------------------------------------------------
 interface Source {
-  group: string; label: string; mcp: boolean; rows: ToolRow[]
+  group: string; label: string; kind: 'built-in' | 'mcp' | 'plugin'; rows: ToolRow[]
   calls: number; errors: number; cost: number; sent: number; tools: number
   verdict: 'busy' | 'rare' | 'never'
 }
@@ -175,7 +175,9 @@ function sourcesOf(report: Report, t: T): Source[] {
     const cur = rows.filter(r => r.current)
     const calls = cur.reduce((n, r) => n + r.calls, 0) // installed tools only: removed ones don't make a source "used"
     return {
-      group, rows, calls, label: group === 'built-in' ? t('group.builtin') : group.slice(4), mcp: group !== 'built-in',
+      group, rows, calls,
+      kind: group === 'built-in' ? 'built-in' : group.startsWith('mcp:') ? 'mcp' : 'plugin',
+      label: group === 'built-in' ? t('group.builtin') : group.slice(group.indexOf(':') + 1),
       errors: cur.reduce((n, r) => n + r.errors, 0),
       cost: cur.reduce((n, r) => n + r.cost, 0), tools: cur.length,
       sent: rows.reduce((n, r) => n + r.sentTok, 0),
@@ -193,10 +195,10 @@ function tipsOf(report: Report, sources: Source[], t: T): Tip[] {
   for (const r of report.rows.filter(x => x.current && failsOften(x)).sort((a, b) => b.errors - a.errors)) {
     tips.push({ level: 'err', text: fill('tip.fails', { tool: r.name, n: String(r.errors), of: String(r.calls), why: r.recentErrors[0]?.text.slice(0, 110) ?? '' }) })
   }
-  for (const s of sources.filter(x => x.mcp && x.tools > 0 && x.verdict === 'never')) {
+  for (const s of sources.filter(x => x.kind !== 'built-in' && x.tools > 0 && x.verdict === 'never')) {
     tips.push({ level: 'warn', text: fill('tip.never', { src: s.label, tok: compact(s.cost), days }) })
   }
-  for (const s of sources.filter(x => x.mcp && x.tools > 0 && x.verdict === 'rare' && x.cost >= 1000)) {
+  for (const s of sources.filter(x => x.kind !== 'built-in' && x.tools > 0 && x.verdict === 'rare' && x.cost >= 1000)) {
     tips.push({ level: 'warn', text: fill('tip.rare', { src: s.label, n: String(s.calls), tok: compact(s.cost), days }) })
   }
   const builtinUnused = report.rows.filter(r => r.current && r.group === 'built-in' && r.calls === 0)
@@ -302,7 +304,7 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
                       <button type="button" className="dtbx-source-head" aria-expanded={open} onClick={() => setOpenSource(open ? null : s.group)}>
                         <span className={open ? 'dtbx-chev dtbx-chev-open' : 'dtbx-chev'}>›</span>
                         <span className="dtbx-group-name">{s.label}</span>
-                        {s.mcp && <span className="dtbx-badge">MCP</span>}
+                        {s.kind !== 'built-in' && <span className="dtbx-badge">{s.kind === 'mcp' ? 'MCP' : t('badge.plugin')}</span>}
                         <span className={`dtbx-badge dtbx-verdict-${s.verdict}`}>{t(`verdict.${s.verdict}`)}</span>
                         <span className="dtbx-group-meta">
                           <span>{t('source.tools').replace('{n}', fmt(s.tools))}</span>

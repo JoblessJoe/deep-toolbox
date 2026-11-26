@@ -13,10 +13,11 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { zstdDecompressSync } from 'node:zlib'
+import { readOwners } from './owners.ts'
 
 export interface ToolRow {
   name: string
-  /** `built-in`, or `mcp:<server>` for `mcp__<server>__<tool>`. */
+  /** `built-in`, `mcp:<server>` for `mcp__<server>__<tool>`, or `plugin:<name>` (see ./owners). */
   group: string
   calls: number
   /** Calls made by subagents (session delegationDepth > 0). */
@@ -63,7 +64,8 @@ export const sessionsRoot = (): string =>
   process.env.DSH_SESSIONS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'sessions')
 
 export const tokens = (value: unknown): number => Math.round((typeof value === 'string' ? value : JSON.stringify(value ?? '')).length / 4)
-export const groupOf = (name: string): string => (name.startsWith('mcp__') ? `mcp:${name.split('__')[1]}` : 'built-in')
+export const groupOf = (name: string, owners: Record<string, string> = {}): string =>
+  name.startsWith('mcp__') ? `mcp:${name.split('__')[1]}` : owners[name] ? `plugin:${owners[name]}` : 'built-in'
 export const clampDays = (raw: unknown): number => {
   const n = Number(raw)
   return Number.isFinite(n) ? Math.min(365, Math.max(1, Math.round(n))) : 30
@@ -81,7 +83,17 @@ interface SessionFacts {
   /** Newest request header: time + tool names (main sessions define the current config). */
   latest: { time: number; names: string[] } | null
   /** Context of the first request, or null (subagent / no request yet). */
-  startup: { time: number; parts: StartupPart[] } | null
+  startup: { time: number; parts: StartupPart[]; tools: { name: string; tokens: number }[] } | null
+}
+
+const sourceLabel = (group: string): string =>
+  group === 'built-in' ? 'Built-in tools' : group.startsWith('mcp:') ? `MCP: ${group.slice(4)}` : `Plugin: ${group.slice(7)}`
+
+/** Startup parts + the first request's tools summed per source (owners applied now, not at parse time). */
+function regroupTools(startup: NonNullable<SessionFacts['startup']>, owners: Record<string, string>): StartupPart[] {
+  const groups = new Map<string, number>()
+  for (const t of startup.tools) { const g = groupOf(t.name, owners); groups.set(g, (groups.get(g) ?? 0) + t.tokens) }
+  return [...startup.parts, ...[...groups].map(([g, tok]) => ({ kind: 'tools' as const, label: sourceLabel(g), tokens: tok }))]
 }
 
 const text = (content: unknown): string =>
@@ -157,12 +169,7 @@ export function parseSession(raw: string): SessionFacts {
         }
         if (!facts.latest || time >= facts.latest.time) facts.latest = { time, names }
         if (early) {
-          if (facts.depth === 0) {
-            const groups = new Map<string, number>()
-            for (const def of defs) groups.set(groupOf(def.name), (groups.get(groupOf(def.name)) ?? 0) + tokens(def))
-            for (const [g, tok] of groups) early.push({ kind: 'tools', label: g === 'built-in' ? 'Built-in tools' : `MCP: ${g.slice(4)}`, tokens: tok })
-            facts.startup = { time, parts: early }
-          }
+          if (facts.depth === 0) facts.startup = { time, parts: early, tools: defs.map(d => ({ name: d.name as string, tokens: tokens(d) })) }
           early = null
         }
         break
@@ -250,7 +257,7 @@ function factsFor(file: { path: string; mtimeMs: number; size: number }): Sessio
 }
 
 /** Aggregate all sessions touched in the last `days` days. */
-export function collect(days = 30, root = sessionsRoot(), now = Date.now()): StatsReport {
+export function collect(days = 30, root = sessionsRoot(), now = Date.now(), owners = readOwners()): StatsReport {
   const since = now - days * DAY
   const sinceDay = Math.floor(since / DAY)
   type Acc = ToolRow & { msSum: number; msN: number; resSum: number; resN: number; costAt: number }
@@ -258,7 +265,7 @@ export function collect(days = 30, root = sessionsRoot(), now = Date.now()): Sta
   const row = (name: string): Acc => {
     let r = rows.get(name)
     if (!r) {
-      r = { name, group: groupOf(name), calls: 0, subCalls: 0, errors: 0, avgMs: null, avgResultTok: null, cost: 0,
+      r = { name, group: groupOf(name, owners), calls: 0, subCalls: 0, errors: 0, avgMs: null, avgResultTok: null, cost: 0,
         offeredIn: 0, offeredRequests: 0, sentTok: 0, lastUsed: 0, current: false, recentErrors: [],
         msSum: 0, msN: 0, resSum: 0, resN: 0, costAt: 0 }
       rows.set(name, r)
@@ -267,7 +274,7 @@ export function collect(days = 30, root = sessionsRoot(), now = Date.now()): Sta
   }
   let sessions = 0
   let latest: { time: number; names: string[] } | null = null
-  let startup: { time: number; parts: StartupPart[] } | null = null
+  let startup: SessionFacts['startup'] = null
   const seen = new Set<string>()
 
   for (const file of sessionFiles(root)) {
@@ -315,7 +322,7 @@ export function collect(days = 30, root = sessionsRoot(), now = Date.now()): Sta
   const cur = out.filter(r => r.current)
   const unused = cur.filter(r => r.calls === 0)
   const sum = (rs: ToolRow[]) => rs.reduce((n, r) => n + r.cost, 0)
-  const parts = mergeParts(startup?.parts ?? [])
+  const parts = mergeParts(startup ? regroupTools(startup, owners) : [])
   return {
     days, generatedAt: now, sessions, rows: out,
     current: { tools: cur.length, cost: sum(cur), unused: unused.length, unusedCost: sum(unused) },
