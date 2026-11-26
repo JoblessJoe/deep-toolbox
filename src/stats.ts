@@ -89,22 +89,18 @@ const text = (content: unknown): string =>
     : Array.isArray(content) ? content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('') : ''
 
 /**
- * Split the instructions message per file (dsh prefixes each with
- * "Instructions from: <path>") and each file at its top-level `# ` headings,
- * so e.g. AGENTS.md › Memory Index shows on its own.
+ * One part per instruction file: dsh prefixes each with "Instructions from:
+ * <path>". The wrapper text before the first file counts as "Other".
  */
 function instructionParts(body: string): StartupPart[] {
   const parts: StartupPart[] = []
-  let file = '', heading = '', buf = ''
+  let file = '', buf = ''
   const flush = () => {
-    if (!buf.trim()) return
-    const label = [file, heading].filter(Boolean).join(' › ') || 'Instructions'
-    parts.push({ kind: 'instructions', label, tokens: tokens(buf) })
+    if (buf.trim()) parts.push(file ? { kind: 'instructions', label: file, tokens: tokens(buf) } : { kind: 'context', label: 'Other', tokens: tokens(buf) })
   }
   for (const line of body.split('\n')) {
     const from = line.match(/^Instructions from: (.+)$/)
-    if (from) { flush(); file = from[1].trim(); heading = ''; buf = '' }
-    else if (line.startsWith('# ')) { flush(); heading = line.slice(2).trim().slice(0, 60); buf = '' }
+    if (from) { flush(); file = from[1].trim(); buf = '' }
     buf += line + '\n'
   }
   flush()
@@ -113,10 +109,10 @@ function instructionParts(body: string): StartupPart[] {
 
 const SOURCE_LABEL: Record<string, [StartupPart['kind'], string]> = {
   'system-prompt': ['system', 'System prompt'],
-  'skill-catalog': ['skills', 'Skill catalog'],
-  'runtime-context': ['context', 'Runtime context'],
-  'working-directory': ['context', 'Working directory'],
-  'time-context': ['context', 'Time'],
+  'skill-catalog': ['skills', 'Skill list'],
+  'runtime-context': ['context', 'Other'],
+  'working-directory': ['context', 'Other'],
+  'time-context': ['context', 'Other'],
 }
 
 /** Parse one session log (JSONL text). Exported for tests. */
@@ -164,7 +160,7 @@ export function parseSession(raw: string): SessionFacts {
           if (facts.depth === 0) {
             const groups = new Map<string, number>()
             for (const def of defs) groups.set(groupOf(def.name), (groups.get(groupOf(def.name)) ?? 0) + tokens(def))
-            for (const [g, tok] of groups) early.push({ kind: 'tools', label: g === 'built-in' ? 'Tools: built-in' : `Tools: ${g}`, tokens: tok })
+            for (const [g, tok] of groups) early.push({ kind: 'tools', label: g === 'built-in' ? 'Built-in tools' : `MCP: ${g.slice(4)}`, tokens: tok })
             facts.startup = { time, parts: early }
           }
           early = null
@@ -319,12 +315,35 @@ export function collect(days = 30, root = sessionsRoot(), now = Date.now()): Sta
   const cur = out.filter(r => r.current)
   const unused = cur.filter(r => r.calls === 0)
   const sum = (rs: ToolRow[]) => rs.reduce((n, r) => n + r.cost, 0)
-  const parts = [...(startup?.parts ?? [])].sort((a, b) => b.tokens - a.tokens)
+  const parts = mergeParts(startup?.parts ?? [])
   return {
     days, generatedAt: now, sessions, rows: out,
     current: { tools: cur.length, cost: sum(cur), unused: unused.length, unusedCost: sum(unused) },
     startup: { total: parts.reduce((n, p) => n + p.tokens, 0), parts },
   }
+}
+
+/**
+ * Same label → one part; parts under 1 % and all "Other" bits fold into one
+ * "Other" row at the end, so the chart stays readable.
+ */
+export function mergeParts(raw: StartupPart[]): StartupPart[] {
+  const byLabel = new Map<string, StartupPart>()
+  for (const p of raw) {
+    const hit = byLabel.get(p.label)
+    if (hit) hit.tokens += p.tokens
+    else byLabel.set(p.label, { ...p })
+  }
+  const total = [...byLabel.values()].reduce((n, p) => n + p.tokens, 0)
+  const keep: StartupPart[] = []
+  let other = 0
+  for (const p of byLabel.values()) {
+    if (p.label === 'Other' || p.tokens < total * 0.01) other += p.tokens
+    else keep.push(p)
+  }
+  keep.sort((a, b) => b.tokens - a.tokens)
+  if (other > 0) keep.push({ kind: 'context', label: 'Other', tokens: other })
+  return keep
 }
 
 /** Compact plain-text summary for agents (the `toolbox_report` tool). */

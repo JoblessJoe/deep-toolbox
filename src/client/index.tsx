@@ -34,9 +34,9 @@ interface Report {
   startup: { total: number; parts: { kind: StartupKind; label: string; tokens: number }[] }
 }
 type StartupKind = 'system' | 'instructions' | 'context' | 'skills' | 'tools'
-const KIND_COLOR: Record<StartupKind, string> = {
-  system: 'var(--dtbx-c1)', instructions: 'var(--dtbx-c2)', context: 'var(--dtbx-c3)', skills: 'var(--dtbx-c4)', tools: 'var(--dtbx-c5)',
-}
+/** One distinct colour per startup part (in order); "Other" is always grey. */
+const PART_COLORS = ['#4f8fd9', '#e07b39', '#3fa37a', '#a66bd6', '#d9a441', '#d1566f', '#2fb3b8', '#8a9a3b', '#7c6f64', '#5b6ee1']
+const partColor = (label: string, i: number): string => (label === 'Other' ? 'var(--dtbx-c3)' : PART_COLORS[i % PART_COLORS.length])
 
 // --- styles ---------------------------------------------------------------
 const STYLE_ID = 'dtbx-styles'
@@ -67,7 +67,7 @@ const CSS = `
 .dtbx-search input { width: 180px; border: none; outline: none; background: transparent; font-size: 13px; color: var(--dsw-alias-label-primary); }
 .dtbx-search input::placeholder { color: var(--dsw-alias-label-caption); }
 .dtbx-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dsw-alias-label-secondary); cursor: pointer; user-select: none; }
-.dtbx-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.dtbx-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .dtbx-card { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--dtbx-fill); }
 .dtbx-card-label { font-size: 12.5px; color: var(--dsw-alias-label-caption); }
 .dtbx-card-value { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -99,6 +99,24 @@ const CSS = `
 .dtbx-error { display: flex; gap: 10px; font-size: 12.5px; padding: 3px 0; white-space: normal; text-align: left; }
 .dtbx-error time { flex: none; color: var(--dsw-alias-label-caption); font-variant-numeric: tabular-nums; }
 .dtbx-error span { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.dtbx-panel { display: flex; flex-direction: column; gap: 10px; }
+.dtbx-tips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dtbx-tip { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-radius: 10px; font-size: 13.5px; line-height: 1.45; background: var(--dtbx-fill); }
+.dtbx-tip-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; transform: translateY(-1px); background: var(--dtbx-ok); }
+.dtbx-tip-warn .dtbx-tip-dot { background: var(--dtbx-warn); }
+.dtbx-tip-err .dtbx-tip-dot { background: var(--dtbx-err); }
+.dtbx-sources { display: flex; flex-direction: column; border: 1px solid var(--dtbx-line); border-radius: 12px; overflow: hidden; }
+.dtbx-source + .dtbx-source { border-top: 1px solid var(--dtbx-line); }
+.dtbx-source-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: transparent; cursor: pointer; font-size: 13.5px; color: var(--dsw-alias-label-primary); text-align: left; }
+.dtbx-source-head:hover { background: var(--dtbx-hover); }
+.dtbx-chev { display: inline-block; width: 10px; color: var(--dsw-alias-label-caption); transition: transform 120ms ease; }
+.dtbx-chev-open { transform: rotate(90deg); }
+.dtbx-strong { color: var(--dsw-alias-label-primary); font-weight: 550; }
+.dtbx-verdict-busy { color: var(--dtbx-ok); background: color-mix(in srgb, var(--dtbx-ok) 12%, transparent); }
+.dtbx-verdict-rare { color: var(--dtbx-warn); background: color-mix(in srgb, var(--dtbx-warn) 12%, transparent); }
+.dtbx-verdict-never { color: var(--dtbx-err); background: color-mix(in srgb, var(--dtbx-err) 10%, transparent); }
+.dtbx-source .dtbx-table { border-top: 1px solid var(--dtbx-line); }
+.dtbx-link { align-self: flex-start; border: none; background: transparent; padding: 0; cursor: pointer; font-size: 13px; color: var(--dsw-alias-label-secondary); text-decoration: underline; text-underline-offset: 2px; }
 .dtbx-startup { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--dtbx-line); }
 .dtbx-startup-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .dtbx-h2 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -116,7 +134,8 @@ const CSS = `
 .dtbx-btn:disabled { opacity: 0.5; cursor: default; }
 .dtbx-muted { color: var(--dsw-alias-label-caption); font-size: 13px; }
 @media (max-width: 760px) {
-  .dtbx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dtbx-cards { grid-template-columns: 1fr; }
+  .dtbx-group-meta span:not(.dtbx-strong) { display: none; }
   .dtbx-group { overflow-x: auto; }
   .dtbx-legend { grid-template-columns: 1fr; }
   .dtbx-hide-narrow { display: none; }
@@ -132,7 +151,6 @@ function ensureStyles(): void {
 
 // --- helpers --------------------------------------------------------------
 const RANGES = [7, 30, 90] as const
-type Filter = 'all' | 'unused' | 'errors'
 const fmt = (n: number): string => n.toLocaleString()
 const compact = (n: number): string => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 const secs = (ms: number | null): string => (ms === null ? '–' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`)
@@ -147,16 +165,64 @@ function ago(ts: number, t: T): string {
 }
 
 // --- page -----------------------------------------------------------------
+interface Source {
+  group: string; label: string; mcp: boolean; rows: ToolRow[]
+  calls: number; errors: number; cost: number; sent: number; tools: number
+  verdict: 'busy' | 'rare' | 'never'
+}
+interface Tip { level: 'warn' | 'err' | 'ok'; text: string }
+
+/** Rarely used = under 10 calls in the range. */
+const verdictOf = (calls: number): Source['verdict'] => (calls === 0 ? 'never' : calls < 10 ? 'rare' : 'busy')
+
+function sourcesOf(report: Report, t: T): Source[] {
+  const by = new Map<string, ToolRow[]>()
+  for (const r of report.rows) by.set(r.group, [...(by.get(r.group) ?? []), r])
+  return [...by].map(([group, rows]) => {
+    const cur = rows.filter(r => r.current)
+    const calls = rows.reduce((n, r) => n + r.calls, 0)
+    return {
+      group, rows, calls, label: group === 'built-in' ? t('group.builtin') : group.slice(4), mcp: group !== 'built-in',
+      errors: rows.reduce((n, r) => n + r.errors, 0),
+      cost: cur.reduce((n, r) => n + r.cost, 0), tools: cur.length,
+      sent: rows.reduce((n, r) => n + r.sentTok, 0),
+      verdict: verdictOf(calls),
+    }
+  }).filter(s => s.tools > 0 || s.calls > 0)
+    .sort((a, b) => b.cost - a.cost)
+}
+
+/** Plain-language findings, most useful first. */
+function tipsOf(report: Report, sources: Source[], t: T): Tip[] {
+  const tips: Tip[] = []
+  const fill = (k: keyof typeof en, v: Record<string, string>) => Object.entries(v).reduce((s, [a, b]) => s.replace(`{${a}}`, b), t(k))
+  const days = String(report.days)
+  for (const s of sources.filter(x => x.mcp && x.tools > 0 && x.verdict === 'never')) {
+    tips.push({ level: 'warn', text: fill('tip.never', { src: s.label, tok: compact(s.cost), days }) })
+  }
+  for (const s of sources.filter(x => x.mcp && x.tools > 0 && x.verdict === 'rare' && x.cost >= 1000)) {
+    tips.push({ level: 'warn', text: fill('tip.rare', { src: s.label, n: String(s.calls), tok: compact(s.cost), days }) })
+  }
+  for (const r of report.rows.filter(failsOften).sort((a, b) => b.errors - a.errors)) {
+    tips.push({ level: 'err', text: fill('tip.fails', { tool: r.name, n: String(r.errors), of: String(r.calls), why: r.recentErrors[0]?.text.slice(0, 110) ?? '' }) })
+  }
+  const builtinUnused = report.rows.filter(r => r.current && r.group === 'built-in' && r.calls === 0)
+  if (builtinUnused.length >= 5) {
+    tips.push({ level: 'warn', text: fill('tip.builtin', { n: String(builtinUnused.length), tok: compact(builtinUnused.reduce((n, r) => n + r.cost, 0)), days }) })
+  }
+  if (tips.length === 0) tips.push({ level: 'ok', text: t('tip.ok') })
+  return tips
+}
+
 function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
   const t = ctx.locale.bind('toolbox') as T
   const [days, setDays] = useState<number>(30)
   const [report, setReport] = useState<Report | null>(null)
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [filter, setFilter] = useState<Filter>('all')
-  const [query, setQuery] = useState('')
+  const [openSource, setOpenSource] = useState<string | null>(null)
+  const [openTool, setOpenTool] = useState<string | null>(null)
   const [showRemoved, setShowRemoved] = useState(false)
-  const [open, setOpen] = useState<string | null>(null)
 
   const [tick, setTick] = useState(0)
   const load = useCallback(() => setTick(n => n + 1), [])
@@ -167,28 +233,13 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
     fetch(`/api/deep-toolbox/stats?days=${days}`, { headers: { accept: 'application/json' }, signal: ac.signal })
       .then(r => r.json())
       .then((d) => { if (d?.ok) setReport(d); else setError(true) })
-      .catch((e) => { if (!ac.signal.aborted) setError(true) })
+      .catch(() => { if (!ac.signal.aborted) setError(true) })
       .finally(() => { if (!ac.signal.aborted) setLoading(false) })
     return () => ac.abort()
   }, [days, tick])
 
-  const groups = useMemo(() => {
-    if (!report) return []
-    const q = query.trim().toLowerCase()
-    const rows = report.rows
-      .filter(r => showRemoved || r.current)
-      .filter(r => filter === 'all' || (filter === 'unused' ? r.current && r.calls === 0 : r.errors > 0))
-      .filter(r => !q || r.name.toLowerCase().includes(q))
-    const byGroup = new Map<string, ToolRow[]>()
-    for (const r of rows) byGroup.set(r.group, [...(byGroup.get(r.group) ?? []), r])
-    return [...byGroup].map(([group, rs]) => ({
-      group, rows: rs,
-      calls: rs.reduce((n, r) => n + r.calls, 0),
-      cost: rs.filter(r => r.current).reduce((n, r) => n + r.cost, 0),
-      sent: rs.reduce((n, r) => n + r.sentTok, 0),
-    })).sort((a, b) => b.calls - a.calls || b.cost - a.cost)
-  }, [report, filter, query, showRemoved])
-
+  const sources = useMemo(() => (report ? sourcesOf(report, t) : []), [report, t])
+  const tips = useMemo(() => (report ? tipsOf(report, sources, t) : []), [report, sources, t])
   const totals = useMemo(() => {
     const rows = report?.rows ?? []
     const calls = rows.reduce((n, r) => n + r.calls, 0)
@@ -199,18 +250,16 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
   return (
     <div className="dtbx-root">
       <div className="dtbx-inner">
-        <p className="dtbx-sub">{t('subtitle')}</p>
-
         <div className="dtbx-toolbar">
-          <div className="dtbx-tabs" role="tablist">
-            {RANGES.map(n => (
-              <button key={n} type="button" role="tab" aria-selected={days === n} className="dtbx-tab" onClick={() => setDays(n)}>
-                {t('range.days').replace('{n}', String(n))}
-              </button>
-            ))}
-          </div>
+          <p className="dtbx-sub">{t('subtitle')}</p>
           <div className="dtbx-end">
-            <label className="dtbx-search"><input value={query} placeholder={t('search')} onChange={e => setQuery(e.target.value)} /></label>
+            <div className="dtbx-tabs" role="tablist">
+              {RANGES.map(n => (
+                <button key={n} type="button" role="tab" aria-selected={days === n} className="dtbx-tab" onClick={() => setDays(n)}>
+                  {t('range.days').replace('{n}', String(n))}
+                </button>
+              ))}
+            </div>
             <button type="button" className="dtbx-btn" onClick={load} disabled={loading}>{t('refresh')}</button>
           </div>
         </div>
@@ -223,54 +272,71 @@ function ToolboxPage({ ctx }: { ctx: ClientContext }): ReactNode {
         {report && (
           <>
             <div className="dtbx-cards">
-              <Card label={t('card.tools')} value={fmt(report.current.tools)} hint={t('card.sessions').replace('{n}', fmt(report.sessions))} />
-              <Card label={t('card.cost')} value={`${compact(report.current.cost)} tok`} hint={t('card.costHint')} />
-              <Card warn={report.current.unused > 0} label={t('card.unused')} value={fmt(report.current.unused)}
-                hint={t('card.unusedHint').replace('{tok}', compact(report.current.unusedCost))} />
+              <Card label={t('card.startup')} value={`${compact(report.startup.total || report.current.cost)} tok`}
+                hint={t('card.startupHint').replace('{tok}', compact(report.current.cost))} />
+              <Card warn={report.current.unusedCost >= 2000} label={t('card.unused')} value={`${compact(report.current.unusedCost)} tok`}
+                hint={t('card.unusedHint').replace('{n}', fmt(report.current.unused)).replace('{days}', String(report.days))} />
               <Card warn={totals.calls > 0 && totals.errors / totals.calls >= 0.05} label={t('card.errors')}
                 value={totals.calls ? `${((totals.errors / totals.calls) * 100).toFixed(1)}%` : '–'}
-                hint={t('card.callsHint').replace('{n}', fmt(totals.calls))} />
+                hint={t('card.callsHint').replace('{n}', fmt(totals.calls)).replace('{s}', fmt(report.sessions))} />
             </div>
+
+            <section className="dtbx-panel">
+              <h2 className="dtbx-h2">{t('tips.title')}</h2>
+              <ul className="dtbx-tips">
+                {tips.slice(0, 6).map((tip, i) => (
+                  <li key={i} className={`dtbx-tip dtbx-tip-${tip.level}`}><span className="dtbx-tip-dot" />{tip.text}</li>
+                ))}
+              </ul>
+              {tips.some(x => x.level === 'warn') && <span className="dtbx-note">{t('tips.how')}</span>}
+            </section>
 
             {report.startup.total > 0 && <Startup t={t} startup={report.startup} />}
 
-            <div className="dtbx-toolbar">
-              <div className="dtbx-tabs" role="tablist">
-                {(['all', 'unused', 'errors'] as const).map(f => (
-                  <button key={f} type="button" role="tab" aria-selected={filter === f} className="dtbx-tab" onClick={() => setFilter(f)}>{t(`filter.${f}`)}</button>
-                ))}
+            <section className="dtbx-panel">
+              <div className="dtbx-startup-head">
+                <h2 className="dtbx-h2">{t('sources.title')}</h2>
+                <label className="dtbx-check">
+                  <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />{t('filter.removed')}
+                </label>
               </div>
-              <label className="dtbx-check">
-                <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />{t('filter.removed')}
-              </label>
-            </div>
-
-            {groups.length === 0 && <p className="dtbx-muted">{t('empty')}</p>}
-            {groups.map(g => (
-              <section key={g.group} className="dtbx-group">
-                <div className="dtbx-group-head">
-                  <span className="dtbx-group-name">{g.group === 'built-in' ? t('group.builtin') : g.group.slice(4)}</span>
-                  {g.group !== 'built-in' && <span className="dtbx-badge">MCP</span>}
-                  <span className="dtbx-group-meta">
-                    <span>{t('card.callsHint').replace('{n}', fmt(g.calls))}</span>
-                    <span>{compact(g.cost)} tok / req</span>
-                    <span className="dtbx-hide-narrow">{t('group.spent').replace('{tok}', compact(g.sent))}</span>
-                  </span>
-                </div>
-                <table className="dtbx-table">
-                  <thead>
-                    <tr>
-                      <th>{t('col.tool')}</th><th>{t('col.calls')}</th><th>{t('col.errors')}</th>
-                      <th className="dtbx-hide-narrow">{t('col.time')}</th><th className="dtbx-hide-narrow">{t('col.result')}</th>
-                      <th>{t('col.cost')}</th><th>{t('col.last')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.rows.map(r => <Row key={r.name} r={r} t={t} max={totals.maxCalls} open={open === r.name} onToggle={() => setOpen(open === r.name ? null : r.name)} />)}
-                  </tbody>
-                </table>
-              </section>
-            ))}
+              <div className="dtbx-sources">
+                {sources.map(s => {
+                  const open = openSource === s.group
+                  const rows = s.rows.filter(r => showRemoved || r.current)
+                  return (
+                    <div key={s.group} className="dtbx-source">
+                      <button type="button" className="dtbx-source-head" aria-expanded={open} onClick={() => setOpenSource(open ? null : s.group)}>
+                        <span className={open ? 'dtbx-chev dtbx-chev-open' : 'dtbx-chev'}>›</span>
+                        <span className="dtbx-group-name">{s.label}</span>
+                        {s.mcp && <span className="dtbx-badge">MCP</span>}
+                        <span className={`dtbx-badge dtbx-verdict-${s.verdict}`}>{t(`verdict.${s.verdict}`)}</span>
+                        <span className="dtbx-group-meta">
+                          <span>{t('source.tools').replace('{n}', fmt(s.tools))}</span>
+                          <span>{t('source.calls').replace('{n}', fmt(s.calls))}</span>
+                          <span className="dtbx-strong">{t('source.cost').replace('{tok}', compact(s.cost))}</span>
+                        </span>
+                      </button>
+                      {open && (
+                        <table className="dtbx-table">
+                          <thead>
+                            <tr>
+                              <th>{t('col.tool')}</th><th>{t('col.calls')}</th><th>{t('col.errors')}</th>
+                              <th className="dtbx-hide-narrow">{t('col.time')}</th><th className="dtbx-hide-narrow">{t('col.result')}</th>
+                              <th>{t('col.cost')}</th><th>{t('col.last')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.length === 0 && <tr><td colSpan={7} className="dtbx-muted">{t('empty')}</td></tr>}
+                            {rows.map(r => <Row key={r.name} r={r} t={t} max={totals.maxCalls} open={openTool === r.name} onToggle={() => setOpenTool(openTool === r.name ? null : r.name)} />)}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
             <p className="dtbx-note">{t('how')}</p>
           </>
         )}
@@ -288,13 +354,13 @@ function Startup({ t, startup }: { t: T; startup: Report['startup'] }): ReactNod
       </div>
       <div className="dtbx-stack" role="img" aria-label={t('startup.title')}>
         {startup.parts.map((p, i) => (
-          <span key={i} title={`${p.label}: ${fmt(p.tokens)} tok`} style={{ width: `${(p.tokens / startup.total) * 100}%`, background: KIND_COLOR[p.kind] }} />
+          <span key={i} title={`${p.label}: ${fmt(p.tokens)} tok`} style={{ width: `${(p.tokens / startup.total) * 100}%`, background: partColor(p.label, i) }} />
         ))}
       </div>
       <div className="dtbx-legend">
         {startup.parts.map((p, i) => (
           <div key={i} className="dtbx-legend-row">
-            <span className="dtbx-dot" style={{ background: KIND_COLOR[p.kind] }} />
+            <span className="dtbx-dot" style={{ background: partColor(p.label, i) }} />
             <span className="dtbx-legend-label" title={p.label}>{p.label}</span>
             <span className="dtbx-legend-num">{compact(p.tokens)} · {Math.round((p.tokens / startup.total) * 100)}%</span>
           </div>

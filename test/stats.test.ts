@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
-import { agentSummary, clampDays, collect, decodeZstdFrames, groupOf, parseSession } from '../src/stats.ts'
+import { agentSummary, clampDays, collect, mergeParts, decodeZstdFrames, groupOf, parseSession } from '../src/stats.ts'
 
 const now = Date.now()
 const tool = (name: string, description = 'x'.repeat(40)) => ({ name, description, parameters: { type: 'object' } })
@@ -38,10 +38,14 @@ assert.equal(facts.calls[0].ms, 500)
 assert.equal(facts.calls[1].error, 'Error: boom')
 assert.deepEqual(facts.latest?.names, ['bash', 'mcp__math__evaluate'])
 assert.equal(facts.offered.get('bash')!.size, 1) // one day bucket
-assert.deepEqual(facts.startup?.parts.map(p => p.label), ['System prompt', '~/.dsh/AGENTS.md', '~/.dsh/AGENTS.md › Rules', '~/.dsh/AGENTS.md › Memory', 'AGENTS.md', 'Tools: built-in'], 'user prompt excluded, instructions split by heading, tools grouped')
+assert.deepEqual(facts.startup?.parts.map(p => p.label), ['System prompt', '~/.dsh/AGENTS.md', 'AGENTS.md', 'Built-in tools'], 'user prompt excluded, instructions split by heading, tools grouped')
 // a header without time falls back to the previous event's time instead of vanishing
 const noTime = parseSession(lines([{ type: 'session' }, { type: 'tool/call', time: now, data: { callId: 'x', name: 'a' } }, { type: 'request/header', data: { header: { tools: [tool('a')] } } }]))
 assert.equal([...noTime.offered.get('a')!.values()][0].req, 1)
+assert.deepEqual(mergeParts([
+  { kind: 'tools', label: 'A', tokens: 500 }, { kind: 'context', label: 'Other', tokens: 3 },
+  { kind: 'tools', label: 'A', tokens: 500 }, { kind: 'context', label: 'tiny', tokens: 5 }, { kind: 'system', label: 'B', tokens: 400 },
+]).map(p => [p.label, p.tokens]), [['A', 1000], ['B', 400], ['Other', 8]])
 assert.equal(clampDays(0), 1)
 assert.equal(clampDays('abc'), 30)
 assert.equal(groupOf('mcp__math__evaluate'), 'mcp:math')
